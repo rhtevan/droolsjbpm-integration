@@ -17,6 +17,7 @@ package org.kie.server.controller.openshift.storage;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -92,7 +93,7 @@ public class OpenShiftServerTemplateStorageTest extends ServerTemplateStorageTes
             }
 
             @Override
-            public boolean isDCStable(DeploymentConfig dc) {
+            public boolean isDCStable(Optional<DeploymentConfig> dc) {
                 return true;
             }
         };

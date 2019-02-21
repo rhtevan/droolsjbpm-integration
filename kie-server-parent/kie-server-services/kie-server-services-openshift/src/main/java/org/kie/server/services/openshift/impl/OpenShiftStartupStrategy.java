@@ -20,6 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -40,7 +41,7 @@ import org.kie.server.services.api.StartupStrategy;
 import org.kie.server.services.impl.ContainerManager;
 import org.kie.server.services.impl.KieServerImpl;
 import org.kie.server.services.impl.storage.KieServerState;
-import org.kie.server.services.openshift.api.KieServerReadinessProbe;
+import org.kie.server.services.openshift.api.KieServerOpenShiftUtils;
 import org.kie.server.services.openshift.impl.storage.cloud.CloudClientFactory;
 import org.kie.server.services.openshift.impl.storage.cloud.KieServerStateCloudRepository;
 import org.slf4j.Logger;
@@ -55,7 +56,7 @@ public class OpenShiftStartupStrategy implements StartupStrategy {
 
     private static Supplier<OpenShiftClient> clouldClientHelper = () -> (new CloudClientFactory() {}).createOpenShiftClient();
 
-    private static class WatchRunner implements Runnable, KieServerReadinessProbe {
+    private static class WatchRunner implements Runnable, KieServerOpenShiftUtils {
 
         private boolean isWatchRunning = true;
         private String kieServerId;
@@ -74,8 +75,9 @@ public class OpenShiftStartupStrategy implements StartupStrategy {
                         logger.debug("Event - Action: {}, {} on ConfigMap ",
                                     action, kieServerState.getMetadata().getName());
 
-                        DeploymentConfig dc = client.deploymentConfigs().withName(kieServerId).get();
-                        if (action.equals(Action.MODIFIED) && isRolloutRequired(client, kieServerId, isDCStable(dc))) {
+                        Optional<DeploymentConfig> dcOpt = getKieServerDC(kieServerId, client);
+                        DeploymentConfig dc = dcOpt.orElseThrow(IllegalStateException::new);
+                        if (action.equals(Action.MODIFIED) && isRolloutRequired(client, kieServerId, isDCStable(dcOpt))) {
                             ObjectMeta md = dc.getSpec().getTemplate().getMetadata();
                             Map<String, String> ann = md.getAnnotations() == null ? new HashMap<>() : md.getAnnotations();
                             md.setAnnotations(ann);
