@@ -135,15 +135,29 @@ public class KieServerStateOpenShiftRepository extends KieServerStateCloudReposi
             } else {
                 ConfigMap cm = cmOpt.orElseThrow(() -> 
                     new IllegalStateException("KieServerState ConfigMap must exist before update."));
-                if (isServerStateUpdateAllowed(dcOpt, cm, kieServerState)) {
-                    ObjectMeta md = cm.getMetadata();
-                    Map<String, String> ann = md.getAnnotations() == null ? new ConcurrentHashMap<>() : md.getAnnotations();
-                    md.setAnnotations(ann);
-                    ann.put(STATE_CHANGE_TIMESTAMP,
-                            ZonedDateTime.now().format(DateTimeFormatter.ISO_INSTANT));
-                    ann.put(ROLLOUT_REQUIRED, "true");
-                    cm.setData(Collections.singletonMap(CFG_MAP_DATA_KEY, xs.toXML(kieServerState)));
-                    client.configMaps().createOrReplace(cm);
+                if (isKieServerRuntime() || dcOpt.isPresent()) {
+                    DeploymentConfig dc = dcOpt.orElseThrow(() -> new IllegalStateException("Kie server deployment config must exist when updating config map from Kie server pod."));
+                    if (isServerStateUpdateAllowed(dc, cm, kieServerState)) {
+                        ObjectMeta md = cm.getMetadata();
+                        Map<String, String> ann = md.getAnnotations() == null ? new ConcurrentHashMap<>() : md.getAnnotations();
+                        md.setAnnotations(ann);
+                        ann.put(STATE_CHANGE_TIMESTAMP,
+                                ZonedDateTime.now().format(DateTimeFormatter.ISO_INSTANT));
+                        ann.put(ROLLOUT_REQUIRED, "true");
+                        cm.setData(Collections.singletonMap(CFG_MAP_DATA_KEY, xs.toXML(kieServerState)));
+                        client.configMaps().createOrReplace(cm);
+                    }
+                } else {
+                    if (isServerStateUpdateAllowedInStandaloneWorkbench(cm, kieServerState)) {
+                        ObjectMeta md = cm.getMetadata();
+                        Map<String, String> ann = md.getAnnotations() == null ? new ConcurrentHashMap<>() : md.getAnnotations();
+                        md.setAnnotations(ann);
+                        ann.put(STATE_CHANGE_TIMESTAMP,
+                                ZonedDateTime.now().format(DateTimeFormatter.ISO_INSTANT));
+                        ann.put(ROLLOUT_REQUIRED, "true");
+                        cm.setData(Collections.singletonMap(CFG_MAP_DATA_KEY, xs.toXML(kieServerState)));
+                        client.configMaps().createOrReplace(cm);
+                    }
                 }
             }
             return null;
@@ -305,15 +319,15 @@ public class KieServerStateOpenShiftRepository extends KieServerStateCloudReposi
                                        .build()));
     }
 
-    protected boolean isServerStateUpdateAllowed(Optional<DeploymentConfig> dcOpt, ConfigMap cm, KieServerState newState) {
+    protected boolean isServerStateUpdateAllowed(DeploymentConfig dc, ConfigMap cm, KieServerState newState) {
         if (cm.getMetadata().getLabels() == null) {
             return false;
         }
         if (cm.getMetadata().getLabels().containsValue(CFG_MAP_LABEL_VALUE_USED)) {
             if (isKieServerRuntime()) {
-                return isUpdateByKieServerProcessAllowed(dcOpt, cm, newState);
+                return isUpdateByKieServerProcessAllowed(dc, cm, newState);
             } else {
-                return isUpdateByNonKieServerProcessAllowed(dcOpt, cm, newState);
+                return isUpdateByNonKieServerProcessAllowed(dc, cm, newState);
             }
         }
         if (cm.getMetadata().getLabels().containsValue(CFG_MAP_LABEL_VALUE_IMMUTABLE)) {
@@ -322,9 +336,23 @@ public class KieServerStateOpenShiftRepository extends KieServerStateCloudReposi
         }
         return false;
     }
-    
-    protected boolean isUpdateByNonKieServerProcessAllowed(Optional<DeploymentConfig> dcOpt, ConfigMap cm, KieServerState newState) {
-        if (isDCStable(dcOpt)) {
+
+    private boolean isServerStateUpdateAllowedInStandaloneWorkbench(ConfigMap cm, KieServerState newState) {
+        if (cm.getMetadata().getLabels() == null) {
+            return false;
+        }
+        if (cm.getMetadata().getLabels().containsValue(CFG_MAP_LABEL_VALUE_USED)) {
+            return true;
+        }
+        if (cm.getMetadata().getLabels().containsValue(CFG_MAP_LABEL_VALUE_IMMUTABLE)) {
+            logger.warn("Add or remove kie container not allowed for immutable kie server: {}",
+                        cm.getMetadata().getName());
+        }
+        return false;
+    }
+
+    private boolean isUpdateByNonKieServerProcessAllowed(DeploymentConfig dc, ConfigMap cm, KieServerState newState) {
+        if (isDCStable(dc)) {
             logger.debug("Non KieServer process updated KieServerState.");
             return true;
         } else {
@@ -332,7 +360,7 @@ public class KieServerStateOpenShiftRepository extends KieServerStateCloudReposi
         }
     }
 
-    protected boolean isUpdateByKieServerProcessAllowed(Optional<DeploymentConfig> dcOpt, ConfigMap cm, KieServerState newState) {
+    private boolean isUpdateByKieServerProcessAllowed(DeploymentConfig dc, ConfigMap cm, KieServerState newState) {
         if (!isKieContainerRemovalAllowed(cm, newState)) {
             return false;
         }
@@ -341,7 +369,7 @@ public class KieServerStateOpenShiftRepository extends KieServerStateCloudReposi
             logger.debug("KieServerState updates during KieServer starting up is ignored!");
             return false;
         }
-        if (!isDCStable(dcOpt)) {
+        if (!isDCStable(dc)) {
             logger.debug("KieServerState updates during DC rollout is ignored!");
             return false;
         } 

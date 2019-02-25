@@ -20,7 +20,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -75,9 +74,8 @@ public class OpenShiftStartupStrategy implements StartupStrategy {
                         logger.debug("Event - Action: {}, {} on ConfigMap ",
                                     action, kieServerState.getMetadata().getName());
 
-                        Optional<DeploymentConfig> dcOpt = getKieServerDC(kieServerId, client);
-                        DeploymentConfig dc = dcOpt.orElseThrow(IllegalStateException::new);
-                        if (action.equals(Action.MODIFIED) && isRolloutRequired(client, kieServerId, isDCStable(dcOpt))) {
+                        DeploymentConfig dc = getKieServerDC(kieServerId, client).orElseThrow(IllegalStateException::new);
+                        if (action.equals(Action.MODIFIED) && isRolloutRequired(client, kieServerId, isDCStable(dc))) {
                             ObjectMeta md = dc.getSpec().getTemplate().getMetadata();
                             Map<String, String> ann = md.getAnnotations() == null ? new HashMap<>() : md.getAnnotations();
                             md.setAnnotations(ann);

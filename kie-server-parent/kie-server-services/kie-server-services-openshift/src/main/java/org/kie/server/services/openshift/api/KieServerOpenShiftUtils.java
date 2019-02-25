@@ -32,9 +32,8 @@ public interface KieServerOpenShiftUtils {
      * @param dcOpt
      * @return true if there are no ongoing DC activities, or DC does not exist.
      */
-    default boolean isDCStable(Optional<DeploymentConfig> dcOpt) {
-        return dcOpt.map(dc -> "True".equals(dc.getStatus().getConditions().get(0).getStatus()) 
-                         && dc.getStatus().getUnavailableReplicas() == 0).orElse(true);
+    default boolean isDCStable(DeploymentConfig dc) {
+        return "True".equals(dc.getStatus().getConditions().get(0).getStatus()) && dc.getStatus().getUnavailableReplicas() == 0;
     }
 
     default Optional<DeploymentConfig> getKieServerDC(String serverId, OpenShiftClient client) {
